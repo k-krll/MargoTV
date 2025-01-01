@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Загрузка видео - <%= appName %></title>
+  <style>
+    :root {
+      --netflix-red: #E50914;
+      --netflix-black: #141414;
+      --netflix-dark: #181818;
+    }
+
+    body {
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: var(--netflix-black);
+      color: white;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      padding: 20px 4%;
+      background: rgba(0,0,0,0.7);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      color: var(--netflix-red);
+      font-size: 2rem;
+      font-weight: bold;
+      text-decoration: none;
+    }
+
+    .main-content {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 40px 20px;
+    }
+
+    .upload-form {
+      background: var(--netflix-dark);
+      padding: 40px;
+      border-radius: 8px;
+      width: 100%;
+      max-width: 500px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+
+    .form-title {
+      margin: 0 0 30px;
+      font-size: 1.8rem;
+      font-weight: 500;
+    }
+
+    .form-group {
+      margin-bottom: 25px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 1rem;
+      color: #ccc;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #333;
+      border-radius: 4px;
+      background: #222;
+      color: white;
+      font-size: 1rem;
+      box-sizing: border-box;
+    }
+
+    input[type="file"] {
+      width: 100%;
+      padding: 12px;
+      background: #222;
+      border: 2px dashed #333;
+      border-radius: 4px;
+      color: #ccc;
+      cursor: pointer;
+    }
+
+    input[type="file"]::-webkit-file-upload-button {
+      background: var(--netflix-red);
+      color: white;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-right: 10px;
+    }
+
+    button {
+      background-color: var(--netflix-red);
+      color: white;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 4px;
+      font-size: 1.1rem;
+      cursor: pointer;
+      width: 100%;
+      transition: background-color 0.2s;
+    }
+
+    button:hover {
+      background-color: #f40612;
+    }
+
+    .back-link {
+      display: inline-block;
+      margin-top: 20px;
+      color: #999;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+
+    .back-link:hover {
+      color: white;
+    }
+
+    textarea {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #333;
+      border-radius: 4px;
+      background: #222;
+      color: white;
+      font-size: 1rem;
+      box-sizing: border-box;
+      resize: vertical;
+    }
+
+    .thumbnail-preview {
+      margin-top: 10px;
+      max-width: 200px;
+      display: none;
+    }
+
+    .thumbnail-preview img {
+      width: 100%;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <a href="/" class="logo"><%= appName %></a>
+  </header>
+
+  <main class="main-content">
+    <div class="upload-form">
+      <h1 class="form-title">Загрузка нового видео</h1>
+      <form action="/upload" method="post" enctype="multipart/form-data">
+        <div class="form-group">
+          <label for="title">Название видео</label>
+          <input type="text" id="title" name="title" required placeholder="Введите название видео">
+        </div>
+        <div class="form-group">
+          <label for="description">Описание</label>
+          <textarea id="description" name="description" rows="4" placeholder="Добавьте описание видео"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="thumbnail">Обложка видео</label>
+          <input type="file" id="thumbnail" name="thumbnail" accept="image/*">
+          <div class="thumbnail-preview"></div>
+        </div>
+        <div class="form-group">
+          <label for="video">Выберите видео</label>
+          <input type="file" id="video" name="video" accept="video/*" required>
+        </div>
+        <button type="submit">Загрузить</button>
+        <a href="/" class="back-link">← Вернуться на главную</a>
+      </form>
+    </div>
+  </main>
+
+  <script>
+  document.getElementById('thumbnail').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      const preview = document.querySelector('.thumbnail-preview');
+      
+      reader.onload = function(e) {
+        preview.style.display = 'block';
+        preview.innerHTML = `<img src="${e.target.result}" alt="Preview">`;
+      }
+      
+      reader.readAsDataURL(file);
+    }
+  });
+  </script>
+</body>
+</html> 

@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>MargoTV</title>
+  <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
+  <style>
+    :root {
+      --netflix-red: #E50914;
+      --netflix-black: #141414;
+      --netflix-dark: #181818;
+    }
+
+    body {
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: var(--netflix-black);
+      color: white;
+    }
+
+    .header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      padding: 20px 4%;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0) 100%);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 1000;
+    }
+
+    .logo {
+      color: var(--netflix-red);
+      font-size: 2rem;
+      font-weight: bold;
+      text-decoration: none;
+    }
+
+    .upload-button {
+      background-color: var(--netflix-red);
+      color: white;
+      padding: 8px 18px;
+      border-radius: 4px;
+      text-decoration: none;
+      font-weight: 500;
+      transition: background-color 0.2s;
+    }
+
+    .upload-button:hover {
+      background-color: #f40612;
+    }
+
+    .main-content {
+      margin-top: 70px;
+      padding: 0 4%;
+    }
+
+    .section-title {
+      font-size: 1.6rem;
+      font-weight: 500;
+      margin: 30px 0 20px;
+    }
+
+    .videos {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 20px;
+      padding-bottom: 50px;
+    }
+
+    .video-item {
+      position: relative;
+      transition: transform 0.3s;
+      cursor: pointer;
+    }
+
+    .video-item:hover {
+      transform: scale(1.05);
+    }
+
+    .video-item h2 {
+      font-size: 1.1rem;
+      margin: 10px 0;
+      font-weight: 500;
+    }
+
+    .plyr {
+      width: 100%;
+      height: auto;
+      aspect-ratio: 16/9;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .plyr--video {
+      background: var(--netflix-dark);
+    }
+
+    .video-container {
+      position: relative;
+      width: 100%;
+      cursor: pointer;
+    }
+
+    .video-poster {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: opacity 0.3s;
+    }
+
+    .video-poster.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 100px 20px;
+      color: #999;
+    }
+
+    .empty-state h2 {
+      font-size: 1.8rem;
+      margin-bottom: 15px;
+    }
+
+    .empty-state p {
+      font-size: 1.1rem;
+      margin-bottom: 25px;
+    }
+
+    .video-thumbnail {
+      position: relative;
+      aspect-ratio: 16/9;
+      background: var(--netflix-dark);
+      cursor: pointer;
+      overflow: hidden;
+      border-radius: 4px;
+    }
+
+    .video-thumbnail img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.3s;
+    }
+
+    .video-thumbnail:hover img {
+      transform: scale(1.05);
+    }
+
+    .play-button {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 60px;
+      height: 60px;
+      background: rgba(229, 9, 20, 0.8);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 24px;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .video-thumbnail:hover .play-button {
+      opacity: 1;
+    }
+
+    .video-info {
+      padding: 10px 0;
+    }
+
+    .video-description {
+      color: #999;
+      font-size: 0.9rem;
+      margin: 5px 0;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .video-meta {
+      color: #666;
+      font-size: 0.8rem;
+      margin-top: 5px;
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <a href="/" class="logo"><%= appName %></a>
+    <a href="/upload" class="upload-button">Загрузить видео</a>
+  </header>
+
+  <main class="main-content">
+    <% if (videos.length > 0) { %>
+      <h1 class="section-title">Все видео</h1>
+      <div class="videos">
+        <% videos.forEach(function(video, index) { %>
+          <div class="video-item">
+            <div class="video-container" id="container-<%= index %>">
+              <% if (video.thumbnail) { %>
+                <img 
+                  src="<%= video.thumbnail %>" 
+                  class="video-poster" 
+                  id="poster-<%= index %>"
+                  alt="<%= video.title %>"
+                >
+              <% } %>
+              <video
+                class="plyr-player"
+                id="player-<%= index %>"
+                playsinline
+                controls
+              >
+                <source src="<%= video.path %>" type="video/mp4" />
+              </video>
+            </div>
+            <div class="video-info">
+              <h2><%= video.title %></h2>
+              <% if (video.description) { %>
+                <p class="video-description"><%= video.description %></p>
+              <% } %>
+              <div class="video-meta">
+                Добавлено: <%= new Date(video.uploadDate).toLocaleDateString('ru-RU') %>
+              </div>
+            </div>
+          </div>
+        <% }); %>
+      </div>
+    <% } else { %>
+      <div class="empty-state">
+        <h2>Пока нет видео</h2>
+        <p>Загрузите свое первое видео, чтобы начать</p>
+        <a href="/upload" class="upload-button">Загрузить видео</a>
+      </div>
+    <% } %>
+  </main>
+
+  <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const players = {};
+      
+      document.querySelectorAll('.plyr-player').forEach((player, index) => {
+        // Инициализируем Plyr для каждого видео
+        players[index] = new Plyr(player, {
+          controls: [
+            'play-large',
+            'play',
+            'progress',
+            'current-time',
+            'mute',
+            'volume',
+            'fullscreen'
+          ],
+          hideControls: true,
+          keyboard: { focused: true, global: true }
+        });
+
+        // Обработка постера
+        const poster = document.getElementById(`poster-${index}`);
+        if (poster) {
+          poster.addEventListener('click', function() {
+            this.classList.add('hidden');
+            players[index].play();
+          });
+
+          // Показываем постер снова, когда видео закончилось
+          players[index].on('ended', () => {
+            poster.classList.remove('hidden');
+          });
+        }
+      });
+    });
+  </script>
+</body>
+</html> 
