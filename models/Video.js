@@ -11,7 +11,7 @@ const videoSchema = new mongoose.Schema({
   },
   path: {
     type: String,
-    required: true
+    required: false
   },
   thumbnail: {
     type: String,
@@ -20,6 +20,11 @@ const videoSchema = new mongoose.Schema({
   uploadDate: {
     type: Date,
     default: Date.now
+  },
+  status: {
+    type: String,
+    enum: ['processing', 'completed', 'error'],
+    default: 'processing'
   }
 });
 

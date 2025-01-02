@@ -150,6 +150,47 @@
       width: 100%;
       border-radius: 4px;
     }
+
+    .progress-container {
+      display: none;
+      margin-top: 20px;
+      padding: 20px;
+      background: rgba(0,0,0,0.2);
+      border-radius: 8px;
+    }
+
+    .progress-bar {
+      height: 4px;
+      background: var(--netflix-dark);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--netflix-red);
+      width: 0%;
+      transition: width 0.3s;
+    }
+
+    .progress-text {
+      margin-top: 10px;
+      text-align: center;
+      font-size: 0.9rem;
+      color: #999;
+    }
+
+    .cancel-upload {
+      display: none;
+      margin-top: 10px;
+      background: transparent;
+      border: 1px solid var(--netflix-red);
+      color: var(--netflix-red);
+    }
+
+    .cancel-upload:hover {
+      background: rgba(229, 9, 20, 0.1);
+    }
   </style>
 </head>
 <body>
@@ -160,7 +201,7 @@
   <main class="main-content">
     <div class="upload-form">
       <h1 class="form-title">Загрузка нового видео</h1>
-      <form action="/upload" method="post" enctype="multipart/form-data">
+      <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
         <div class="form-group">
           <label for="title">Название видео</label>
           <input type="text" id="title" name="title" required placeholder="Введите название видео">
@@ -178,7 +219,18 @@
           <label for="video">Выберите видео</label>
           <input type="file" id="video" name="video" accept="video/*" required>
         </div>
-        <button type="submit">Загрузить</button>
+        <div class="progress-container" id="progressContainer">
+          <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+          </div>
+          <div class="progress-text" id="progressText">
+            Подготовка к загрузке...
+          </div>
+          <button type="button" class="cancel-upload" id="cancelUpload">
+            Отменить загрузку
+          </button>
+        </div>
+        <button type="submit" id="submitButton">Загрузить</button>
         <a href="/" class="back-link">← Вернуться на главную</a>
       </form>
     </div>
@@ -197,6 +249,83 @@
       }
       
       reader.readAsDataURL(file);
+    }
+  });
+
+  document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const form = e.target;
+    const formData = new FormData(form);
+    const submitButton = document.getElementById('submitButton');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    const cancelButton = document.getElementById('cancelUpload');
+    
+    // Проверяем размер файла
+    const videoFile = formData.get('video');
+    const fileSize = videoFile.size;
+    const fileSizeMB = fileSize / (1024 * 1024);
+    
+    submitButton.disabled = true;
+    progressContainer.style.display = 'block';
+    cancelButton.style.display = 'block';
+    
+    try {
+      const xhr = new XMLHttpRequest();
+      let cancelled = false;
+      
+      cancelButton.onclick = () => {
+        cancelled = true;
+        xhr.abort();
+        submitButton.disabled = false;
+        progressContainer.style.display = 'none';
+        progressText.textContent = 'Загрузка отменена';
+      };
+      
+      xhr.upload.onprogress = (event) => {
+        if (cancelled) return;
+        
+        const percent = (event.loaded / event.total) * 100;
+        const uploaded = event.loaded / (1024 * 1024);
+        const total = event.total / (1024 * 1024);
+        
+        progressFill.style.width = percent + '%';
+        progressText.textContent = `Загружено ${uploaded.toFixed(1)} MB из ${total.toFixed(1)} MB (${percent.toFixed(1)}%)`;
+      };
+      
+      xhr.onload = () => {
+        if (xhr.status === 200) {
+          window.location.href = '/';
+        } else {
+          progressText.textContent = 'Ошибка при загрузке';
+          submitButton.disabled = false;
+        }
+      };
+      
+      xhr.onerror = () => {
+        progressText.textContent = 'Ошибка сети';
+        submitButton.disabled = false;
+      };
+      
+      xhr.open('POST', '/upload', true);
+      xhr.send(formData);
+      
+    } catch (error) {
+      progressText.textContent = 'Произошла ошибка';
+      submitButton.disabled = false;
+    }
+  });
+
+  // Предварительный просмотр размера файла
+  document.getElementById('video').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (file) {
+      const sizeMB = file.size / (1024 * 1024);
+      const progressText = document.getElementById('progressText');
+      progressText.textContent = `Выбран файл размером ${sizeMB.toFixed(1)} MB`;
+      document.getElementById('progressContainer').style.display = 'block';
     }
   });
   </script>

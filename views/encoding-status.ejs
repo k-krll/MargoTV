@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Кодирование видео - <%= appName %></title>
+  <style>
+    :root {
+      --netflix-red: #E50914;
+      --netflix-black: #141414;
+      --netflix-dark: #181818;
+    }
+
+    body {
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: var(--netflix-black);
+      color: white;
+      min-height: 100vh;
+    }
+
+    .header {
+      padding: 20px 4%;
+      background: rgba(0,0,0,0.7);
+    }
+
+    .logo {
+      color: var(--netflix-red);
+      font-size: 2rem;
+      font-weight: bold;
+      text-decoration: none;
+    }
+
+    .main-content {
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+
+    .encoding-status {
+      background: var(--netflix-dark);
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+
+    .progress-bar {
+      height: 4px;
+      background: #333;
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 20px 0;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--netflix-red);
+      width: 0%;
+      transition: width 0.3s;
+    }
+
+    .status-text {
+      font-size: 1.1rem;
+      margin-bottom: 10px;
+    }
+
+    .time-info {
+      color: #999;
+      font-size: 0.9rem;
+    }
+
+    .error-message {
+      color: var(--netflix-red);
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <a href="/" class="logo"><%= appName %></a>
+  </header>
+
+  <main class="main-content">
+    <div class="encoding-status">
+      <h1>Кодирование видео</h1>
+      <div class="status-text">Подготовка...</div>
+      <div class="progress-bar">
+        <div class="progress-fill"></div>
+      </div>
+      <div class="time-info"></div>
+      <div class="error-message"></div>
+    </div>
+  </main>
+
+  <script>
+    const encodingId = '<%= encodingId %>';
+    const statusText = document.querySelector('.status-text');
+    const progressFill = document.querySelector('.progress-fill');
+    const timeInfo = document.querySelector('.time-info');
+    const errorMessage = document.querySelector('.error-message');
+
+    function formatTime(seconds) {
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = Math.floor(seconds % 60);
+      return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    }
+
+    async function checkStatus() {
+      try {
+        const response = await fetch(`/api/encoding-status/${encodingId}`);
+        const data = await response.json();
+
+        progressFill.style.width = `${data.progress}%`;
+
+        switch(data.status) {
+          case 'pending':
+            statusText.textContent = 'Подготовка к кодированию...';
+            break;
+          case 'processing':
+            statusText.textContent = 'Кодирование видео...';
+            if (data.duration && data.currentTime) {
+              timeInfo.textContent = `${formatTime(data.currentTime)} / ${formatTime(data.duration)}`;
+            }
+            break;
+          case 'completed':
+            statusText.textContent = 'Кодирование завершено!';
+            setTimeout(() => window.location.href = '/', 2000);
+            return;
+          case 'error':
+            statusText.textContent = 'Ошибка при кодировании';
+            errorMessage.textContent = data.error || 'Неизвестная ошибка';
+            return;
+        }
+
+        setTimeout(checkStatus, 1000);
+      } catch (error) {
+        errorMessage.textContent = 'Ошибка при получении статуса';
+      }
+    }
+
+    checkStatus();
+  </script>
+</body>
+</html> 

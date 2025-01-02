@@ -4,17 +4,23 @@ services:
     build: .
     restart: always
     ports:
-      - "3000:3000"
+      - "3005:3005"
     volumes:
       - uploaded_videos:/app/public/videos
       - uploaded_thumbnails:/app/public/thumbnails
     environment:
       - NODE_ENV=production
       - MONGODB_URI=mongodb://mongodb:27017/margotv
+      - PORT=3005
     depends_on:
       - mongodb
     networks:
       - margotv-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3005"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   mongodb:
     image: mongo:latest
@@ -30,10 +36,9 @@ services:
     restart: always
     ports:
       - "80:80"
-      - "443:443"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf
-      - /etc/letsencrypt:/etc/letsencrypt
+      - nginx_logs:/var/log/nginx
     depends_on:
       - app
     networks:
@@ -46,4 +51,5 @@ networks:
 volumes:
   mongodb_data:
   uploaded_videos:
-  uploaded_thumbnails: 
+  uploaded_thumbnails:
+  nginx_logs: 
