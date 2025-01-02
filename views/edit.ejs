@@ -126,6 +126,36 @@
       background: rgba(229, 9, 20, 0.2);
       color: var(--netflix-red);
     }
+
+    .current-subtitles {
+      margin-bottom: 10px;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .remove-subtitles {
+      background: transparent;
+      color: var(--netflix-red);
+      border: 1px solid var(--netflix-red);
+      padding: 5px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+
+    .remove-subtitles:hover {
+      background: rgba(229, 9, 20, 0.1);
+    }
+
+    .subtitle-info {
+      margin-top: 5px;
+      font-size: 0.9rem;
+      color: #999;
+    }
   </style>
 </head>
 <body>
@@ -153,6 +183,20 @@
             <img src="/<%= video.thumbnail %>" alt="Текущее превью" class="current-thumbnail">
           <% } %>
           <input type="file" id="thumbnail" name="thumbnail" accept="image/*">
+        </div>
+
+        <div class="form-group">
+          <label for="subtitles">Субтитры</label>
+          <% if (video.subtitles && video.subtitles.path) { %>
+            <div class="current-subtitles">
+              Текущие субтитры: <%= video.subtitles.label %>
+              <button type="button" class="remove-subtitles" onclick="removeSubtitles()">Удалить</button>
+            </div>
+          <% } %>
+          <input type="file" id="subtitles" name="subtitles" accept=".srt">
+          <div class="subtitle-info">
+            Поддерживается формат .srt
+          </div>
         </div>
 
         <div class="button-group">
@@ -209,6 +253,28 @@
         }
       } catch (error) {
         showMessage('Ошибка при удалении', 'error');
+      }
+    }
+
+    async function removeSubtitles() {
+      if (!confirm('Вы уверены, что хотите удалить субтитры?')) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/videos/${videoId}/subtitles`, {
+          method: 'DELETE'
+        });
+
+        const data = await response.json();
+        
+        if (data.success) {
+          window.location.reload();
+        } else {
+          showMessage('Ошибка при удалении субтитров', 'error');
+        }
+      } catch (error) {
+        showMessage('Ошибка при удалении субтитров', 'error');
       }
     }
 

@@ -211,6 +211,12 @@
     .quality-option:hover {
       background: #444;
     }
+
+    .subtitle-info {
+      margin-top: 5px;
+      font-size: 0.9rem;
+      color: #999;
+    }
   </style>
 </head>
 <body>
@@ -238,6 +244,13 @@
         <div class="form-group">
           <label for="video">Выберите видео</label>
           <input type="file" id="video" name="video" accept="video/*" required>
+        </div>
+        <div class="form-group">
+          <label for="subtitles">Субтитры (опционально)</label>
+          <input type="file" id="subtitles" name="subtitles" accept=".srt">
+          <div class="subtitle-info">
+            Поддерживается формат .srt
+          </div>
         </div>
         <div class="form-group">
           <label>Качество видео</label>

@@ -1,30 +1,30 @@
 const mongoose = require('mongoose');
 
 const videoSchema = new mongoose.Schema({
-  title: {
-    type: String,
-    required: true
-  },
-  description: {
-    type: String,
-    default: ''
-  },
-  path: {
-    type: String,
-    required: false
-  },
-  thumbnail: {
-    type: String,
-    default: null
-  },
-  uploadDate: {
-    type: Date,
-    default: Date.now
-  },
+  title: String,
+  description: String,
+  path: String,
+  thumbnail: String,
   status: {
     type: String,
     enum: ['processing', 'completed', 'error'],
     default: 'processing'
+  },
+  error: String,
+  uploadDate: {
+    type: Date,
+    default: Date.now
+  },
+  subtitles: {
+    path: String,
+    language: {
+      type: String,
+      default: 'ru'
+    },
+    label: {
+      type: String,
+      default: 'Русский'
+    }
   }
 });
 

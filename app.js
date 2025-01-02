@@ -10,6 +10,7 @@ const Video = require('./models/Video');
 const Encoding = require('./models/Encoding');
 const http = require('http');
 const socketIO = require('socket.io');
+const srt2vtt = require('srt-to-vtt');
 
 const app = express();
 const port = 3005;
@@ -47,6 +48,8 @@ const upload = multer({
       cb(null, file.mimetype.startsWith('video/'));
     } else if (file.fieldname === 'thumbnail') {
       cb(null, file.mimetype.startsWith('image/'));
+    } else if (file.fieldname === 'subtitles') {
+      cb(null, file.originalname.endsWith('.srt'));
     } else {
       cb(null, false);
     }
@@ -116,7 +119,8 @@ const encodingSchema = new mongoose.Schema({
 // Обработка загрузки видео
 app.post('/upload', upload.fields([
   { name: 'video', maxCount: 1 },
-  { name: 'thumbnail', maxCount: 1 }
+  { name: 'thumbnail', maxCount: 1 },
+  { name: 'subtitles', maxCount: 1 }
 ]), async (req, res) => {
   try {
     const { title, description, qualities } = req.body;
@@ -124,15 +128,47 @@ app.post('/upload', upload.fields([
     
     const videoFile = req.files['video'][0];
     const thumbnailFile = req.files['thumbnail'] ? req.files['thumbnail'][0] : null;
+    const subtitlesFile = req.files['subtitles'] ? req.files['subtitles'][0] : null;
 
-    // Создаем запись о видео с временным путем
+    // Создаем запись о видео
     const video = await Video.create({
       title,
       description,
       status: 'processing',
-      path: 'processing', // Добавляем временный путь
+      path: 'processing',
       thumbnail: thumbnailFile ? `thumbnails/${Date.now()}${path.extname(thumbnailFile.originalname)}` : null
     });
+
+    // Обрабатываем субтитры если они есть
+    if (subtitlesFile) {
+      const subtitlesPath = `subtitles/${Date.now()}.vtt`;
+      const fullSubtitlesPath = path.join('public', subtitlesPath);
+      
+      // Создаем директорию если её нет
+      const subtitlesDir = path.dirname(fullSubtitlesPath);
+      if (!fs.existsSync(subtitlesDir)) {
+        fs.mkdirSync(subtitlesDir, { recursive: true });
+      }
+
+      // Конвертируем субтитры из SRT в VTT
+      const srtStream = fs.createReadStream(subtitlesFile.path);
+      const vttStream = fs.createWriteStream(fullSubtitlesPath);
+      
+      srtStream
+        .pipe(srt2vtt())
+        .pipe(vttStream);
+
+      // Обновляем информацию о субтитрах в базе
+      video.subtitles = {
+        path: subtitlesPath,
+        language: 'ru',
+        label: 'Русский'
+      };
+      await video.save();
+
+      // Удаляем временный файл
+      fs.unlinkSync(subtitlesFile.path);
+    }
 
     // Создаем запись о кодировании
     const encoding = await Encoding.create({
@@ -254,9 +290,7 @@ async function processVideo(videoFile, thumbnailFile, video, encoding, io) {
     });
 
     console.log('🎉 Обработка видео успешно завершена');
-    io.to(encoding._id.toString()).emit('encoding:completed', {
-      videoId: video._id.toString()
-    });
+    io.to(encoding._id.toString()).emit('encoding:completed');
 
   } catch (error) {
     console.error('❌ Критическая ошибка при обработке видео:', error);
@@ -268,7 +302,6 @@ async function processVideo(videoFile, thumbnailFile, video, encoding, io) {
     });
 
     io.to(encoding._id.toString()).emit('encoding:error', { 
-      videoId: video._id.toString(),
       message: error.message,
       details: error.stack
     });
@@ -332,7 +365,6 @@ async function encodeVideoQuality(inputPath, outputPath, preset, duration, quali
 
           // Отправляем обновление через WebSocket
           io.to(encoding._id.toString()).emit('encoding:progress', {
-            videoId: encoding.videoId.toString(),
             quality,
             progress,
             currentTime,
@@ -477,6 +509,31 @@ app.delete('/api/videos/:id', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Ошибка при удалении' });
+  }
+});
+
+// API для удаления субтитров
+app.delete('/api/videos/:id/subtitles', async (req, res) => {
+  try {
+    const video = await Video.findById(req.params.id);
+    
+    if (!video) {
+      return res.status(404).json({ error: 'Видео не найдено' });
+    }
+
+    if (video.subtitles && video.subtitles.path) {
+      const subtitlesPath = path.join('public', video.subtitles.path);
+      if (fs.existsSync(subtitlesPath)) {
+        fs.unlinkSync(subtitlesPath);
+      }
+    }
+
+    video.subtitles = undefined;
+    await video.save();
+    
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Ошибка при удалении субтитров' });
   }
 });
 
