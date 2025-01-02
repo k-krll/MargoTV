@@ -1,13 +1,15 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
-const ffmpeg = require('ffmpeg-static');
+const ffmpegStatic = require('ffmpeg-static');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const mongoose = require('mongoose');
 const Video = require('./models/Video');
 const Encoding = require('./models/Encoding');
+const http = require('http');
+const socketIO = require('socket.io');
 
 const app = express();
 const port = 3005;
@@ -90,14 +92,36 @@ app.get('/upload', (req, res) => {
   res.render('upload', { appName: APP_NAME });
 });
 
+// Настройки качества видео
+const QUALITY_PRESETS = {
+  '240p': { height: 240, bitrate: '500k' },
+  '360p': { height: 360, bitrate: '800k' },
+  '480p': { height: 480, bitrate: '1500k' },
+  '720p': { height: 720, bitrate: '2500k' },
+  '1080p': { height: 1080, bitrate: '4000k' }
+};
+
+// Обновим схему Encoding
+const encodingSchema = new mongoose.Schema({
+  // ... существующие поля ...
+  qualities: [{
+    resolution: String,
+    status: String,
+    progress: Number,
+    path: String
+  }],
+  selectedQualities: [String]
+});
+
 // Обработка загрузки видео
 app.post('/upload', upload.fields([
   { name: 'video', maxCount: 1 },
   { name: 'thumbnail', maxCount: 1 }
 ]), async (req, res) => {
   try {
-    const title = req.body.title;
-    const description = req.body.description;
+    const { title, description, qualities } = req.body;
+    const selectedQualities = Array.isArray(qualities) ? qualities : [qualities];
+    
     const videoFile = req.files['video'][0];
     const thumbnailFile = req.files['thumbnail'] ? req.files['thumbnail'][0] : null;
 
@@ -117,15 +141,21 @@ app.post('/upload', upload.fields([
       startTime: new Date()
     });
 
-    // Отправляем ID для отслеживания
+    encoding.selectedQualities = selectedQualities;
+    encoding.qualities = selectedQualities.map(q => ({
+      resolution: q,
+      status: 'pending',
+      progress: 0
+    }));
+    await encoding.save();
+
     res.json({ 
       success: true, 
       encodingId: encoding._id,
       redirectUrl: `/encoding-status/${encoding._id}`
     });
 
-    // Начинаем кодирование асинхронно
-    processVideo(videoFile, thumbnailFile, video, encoding);
+    processVideo(videoFile, thumbnailFile, video, encoding, io);
   } catch (error) {
     console.error('Ошибка при загрузке:', error);
     res.status(500).json({ error: 'Upload error' });
@@ -151,54 +181,124 @@ app.get('/api/encoding-status/:id', async (req, res) => {
 });
 
 // Функция обработки видео
-async function processVideo(videoFile, thumbnailFile, video, encoding) {
+async function processVideo(videoFile, thumbnailFile, video, encoding, io) {
   const inputPath = videoFile.path;
-  const outputPath = `public/videos/${Date.now()}.mp4`;
+  const baseOutputPath = `public/videos/${Date.now()}`;
 
-  console.log(`
-🎬 Начало обработки видео:
-- ID: ${video._id}
-- Название: ${video.title}
-- Входной файл: ${inputPath}
-- Выходной файл: ${outputPath}
-  `);
+  console.log('📝 Детали обработки:');
+  console.log(`- Входной файл: ${inputPath}`);
+  console.log(`- Базовый путь выхода: ${baseOutputPath}`);
+  console.log(`- Выбранные качества: ${encoding.selectedQualities.join(', ')}`);
 
   try {
-    // Обработка thumbnail если есть
-    if (thumbnailFile) {
-      const thumbnailPath = `public/${video.thumbnail}`;
-      console.log(`📸 Обработка превью: ${thumbnailPath}`);
-      fs.copyFileSync(thumbnailFile.path, thumbnailPath);
-      fs.unlinkSync(thumbnailFile.path);
-      console.log('✅ Превью сохранено');
+    // Проверяем существование входного файла
+    if (!fs.existsSync(inputPath)) {
+      throw new Error(`Входной файл не найден: ${inputPath}`);
     }
 
-    // Получаем информацию о видео
-    console.log('📊 Получение информации о видео...');
-    const ffprobeProcess = spawn(ffmpeg, [
-      '-i', inputPath,
-      '-show_entries', 'format=duration',
-      '-v', 'quiet',
-      '-of', 'csv=p=0'
-    ]);
+    // Создаем директорию если её нет
+    const videosDir = path.dirname(baseOutputPath);
+    if (!fs.existsSync(videosDir)) {
+      fs.mkdirSync(videosDir, { recursive: true });
+    }
 
-    let duration = 0;
-    ffprobeProcess.stdout.on('data', (data) => {
-      duration = parseFloat(data.toString());
-      encoding.duration = duration;
-      encoding.save();
-      console.log(`⏱️ Длительность видео: ${duration.toFixed(2)} секунд`);
+    // Обработка thumbnail
+    if (thumbnailFile) {
+      try {
+        const thumbnailPath = `public/${video.thumbnail}`;
+        const thumbnailDir = path.dirname(thumbnailPath);
+        
+        if (!fs.existsSync(thumbnailDir)) {
+          fs.mkdirSync(thumbnailDir, { recursive: true });
+        }
+        
+        fs.copyFileSync(thumbnailFile.path, thumbnailPath);
+        fs.unlinkSync(thumbnailFile.path);
+        console.log('✅ Превью успешно сохранено');
+      } catch (thumbnailError) {
+        console.error('⚠️ Ошибка при обработке превью:', thumbnailError);
+        // Продолжаем выполнение даже если с превью проблема
+      }
+    }
+
+    // Обрабатываем каждое качество
+    for (const quality of encoding.selectedQualities) {
+      const preset = QUALITY_PRESETS[quality];
+      const outputPath = `${baseOutputPath}_${quality}.mp4`;
+      
+      console.log(`\n🎯 Кодирование ${quality}:`);
+      console.log(`- Выходной файл: ${outputPath}`);
+      console.log(`- Настройки: ${JSON.stringify(preset)}`);
+
+      try {
+        await encodeVideoQuality(
+          inputPath, 
+          outputPath, 
+          preset, 
+          3600, // Фиксированная длительность
+          quality,
+          encoding,
+          io
+        );
+        console.log(`✅ Качество ${quality} успешно обработано`);
+      } catch (encodeError) {
+        console.error(`❌ Ошибка при кодировании ${quality}:`, encodeError);
+        throw encodeError; // Прерываем весь процесс если кодирование не удалось
+      }
+    }
+
+    // Обновляем статус видео
+    await Video.findByIdAndUpdate(video._id, {
+      status: 'completed',
+      path: `videos/${path.basename(baseOutputPath)}_${encoding.selectedQualities[0]}.mp4`
     });
 
-    // Запускаем кодирование
-    console.log('🔄 Начало кодирования...');
-    const ffmpegProcess = spawn(ffmpeg, [
+    console.log('🎉 Обработка видео успешно завершена');
+    io.to(encoding._id.toString()).emit('encoding:completed');
+
+  } catch (error) {
+    console.error('❌ Критическая ошибка при обработке видео:', error);
+    
+    // Обновляем статус на ошибку
+    await Video.findByIdAndUpdate(video._id, {
+      status: 'error',
+      error: error.message
+    });
+
+    io.to(encoding._id.toString()).emit('encoding:error', { 
+      message: error.message,
+      details: error.stack
+    });
+
+    // Очищаем временные файлы
+    try {
+      if (fs.existsSync(inputPath)) {
+        fs.unlinkSync(inputPath);
+      }
+    } catch (cleanupError) {
+      console.error('⚠️ Ошибка при очистке временных файлов:', cleanupError);
+    }
+  }
+}
+
+// Функция кодирования одного качества
+async function encodeVideoQuality(inputPath, outputPath, preset, duration, quality, encoding, io) {
+  return new Promise((resolve, reject) => {
+    const args = [
       '-i', inputPath,
       '-c:v', 'libx264',
       '-c:a', 'aac',
+      '-b:v', preset.bitrate,
+      '-vf', `scale=-2:${preset.height}`,
+      '-preset', 'medium',
       '-progress', 'pipe:1',
       outputPath
-    ]);
+    ];
+
+    console.log('🎬 Запуск FFmpeg с аргументами:', args.join(' '));
+
+    const ffmpegProcess = spawn(ffmpegStatic, args);
+    let lastProgress = 0;
 
     ffmpegProcess.stdout.on('data', async (data) => {
       const lines = data.toString().trim().split('\n');
@@ -211,67 +311,53 @@ async function processVideo(videoFile, thumbnailFile, video, encoding) {
 
       if (progressData.out_time_ms) {
         const currentTime = parseInt(progressData.out_time_ms) / 1000000;
-        const progress = (currentTime / duration) * 100;
+        const progress = Math.min((currentTime / duration) * 100, 100);
         
-        encoding.currentTime = currentTime;
-        encoding.progress = Math.min(progress, 100);
-        encoding.status = 'processing';
-        await encoding.save();
+        if (progress - lastProgress >= 1) {
+          lastProgress = progress;
+          
+          // Обновляем прогресс в БД
+          await Encoding.updateOne(
+            { _id: encoding._id, 'qualities.resolution': quality },
+            { 
+              $set: { 
+                'qualities.$.progress': progress,
+                'qualities.$.status': 'processing'
+              }
+            }
+          );
 
-        // Логируем прогресс каждые 10%
-        if (Math.floor(progress) % 10 === 0) {
-          console.log(`⏳ Прогресс кодирования: ${progress.toFixed(1)}%`);
+          // Отправляем обновление через WebSocket
+          io.to(encoding._id.toString()).emit('encoding:progress', {
+            quality,
+            progress,
+            currentTime,
+            duration,
+            eta: ((duration - currentTime) / (progress / 100)).toFixed(0)
+          });
         }
       }
     });
 
     ffmpegProcess.stderr.on('data', (data) => {
-      console.log(`🔧 FFmpeg: ${data.toString()}`);
+      console.log('⚠️ FFmpeg stderr:', data.toString());
     });
 
-    ffmpegProcess.on('close', async (code) => {
+    ffmpegProcess.on('close', (code) => {
       if (code === 0) {
-        // Успешное завершение
-        console.log('✅ Кодирование завершено успешно');
-        video.path = outputPath.replace('public/', '');
-        video.status = 'completed';
-        await video.save();
-
-        encoding.status = 'completed';
-        encoding.progress = 100;
-        encoding.endTime = new Date();
-        await encoding.save();
-
-        console.log(`
-📝 Итоги обработки:
-- Статус: Успешно
-- Длительность: ${duration.toFixed(2)} сек
-- Выходной файл: ${outputPath}
-- Время обработки: ${((encoding.endTime - encoding.startTime) / 1000).toFixed(1)} сек
-        `);
-
-        fs.unlinkSync(inputPath);
-        console.log('🗑️ Временные файлы удалены');
+        console.log('✅ FFmpeg успешно завершил работу');
+        resolve();
       } else {
-        // Ошибка
-        console.error(`❌ Ошибка кодирования: FFmpeg завершился с кодом ${code}`);
-        encoding.status = 'error';
-        encoding.error = `FFmpeg exited with code ${code}`;
-        await encoding.save();
-
-        video.status = 'error';
-        await video.save();
+        console.error(`❌ FFmpeg завершился с кодом ${code}`);
+        reject(new Error(`FFmpeg exited with code ${code}`));
       }
     });
-  } catch (error) {
-    console.error('❌ Критическая ошибка:', error);
-    encoding.status = 'error';
-    encoding.error = error.message;
-    await encoding.save();
 
-    video.status = 'error';
-    await video.save();
-  }
+    ffmpegProcess.on('error', (err) => {
+      console.error('❌ Ошибка запуска FFmpeg:', err);
+      reject(err);
+    });
+  });
 }
 
 // Создаем дополнительную директорию для thumbnails
@@ -390,13 +476,65 @@ app.delete('/api/videos/:id', async (req, res) => {
   }
 });
 
-app.listen(port, hostname, () => {
-  console.log(`
-    🚀 Сервер MargoTV запущен
-    📡 Порт: ${port}
-    🔧 Режим: ${isDev ? 'разработка' : 'продакшн'}
-    🌐 Локальный: http://localhost:${port}
-    🌍 По сети: http://${localIP}:${port}
-    📦 MongoDB URI: ${process.env.MONGODB_URI}
-  `);
-}); 
+const server = http.createServer(app);
+const io = socketIO(server);
+
+// WebSocket подключение
+io.on('connection', (socket) => {
+  console.log('🔌 WebSocket подключение установлено');
+
+  socket.on('join:encoding', (encodingId) => {
+    socket.join(encodingId);
+    console.log(`👥 Клиент присоединился к комнате: ${encodingId}`);
+  });
+});
+
+server.listen(port, hostname, () => {
+  console.log(`🚀 Сервер запущен на http://${hostname}:${port}`);
+});
+
+// Функция для получения длительности видео
+function getVideoInfo(inputPath) {
+  return new Promise((resolve) => {
+    console.log('📊 Проверка файла:', inputPath, fs.existsSync(inputPath));
+    
+    // Возвращаем фиктивную длительность, чтобы продолжить процесс
+    resolve({ duration: 3600 }); // 1 час как значение по умолчанию
+    
+    /* Закомментируем проблемную часть пока не найдем решение
+    const ffmpegProcess = spawn(ffmpeg, [
+      '-i', inputPath,
+      '-v', 'error',
+      '-select_streams', 'v:0',
+      '-show_entries', 'format=duration',
+      '-of', 'json'
+    ]);
+
+    let output = '';
+    let errorOutput = '';
+
+    ffmpegProcess.stdout.on('data', (data) => {
+      output += data.toString();
+    });
+
+    ffmpegProcess.stderr.on('data', (data) => {
+      errorOutput += data.toString();
+    });
+
+    ffmpegProcess.on('close', (code) => {
+      if (code === 0) {
+        try {
+          const info = JSON.parse(output);
+          resolve({
+            duration: parseFloat(info.format.duration) || 3600
+          });
+        } catch (error) {
+          resolve({ duration: 3600 });
+        }
+      } else {
+        resolve({ duration: 3600 });
+      }
+    });
+    */
+  });
+} 

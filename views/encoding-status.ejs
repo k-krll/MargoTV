@@ -2,6 +2,7 @@
 <html>
 <head>
   <title>Кодирование видео - <%= appName %></title>
+  <script src="/socket.io/socket.io.js"></script>
   <style>
     :root {
       --netflix-red: #E50914;
@@ -72,6 +73,42 @@
       color: var(--netflix-red);
       margin-top: 10px;
     }
+
+    .quality-item {
+      margin-bottom: 20px;
+      background: rgba(0,0,0,0.2);
+      padding: 15px;
+      border-radius: 8px;
+    }
+
+    .quality-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .quality-name {
+      font-weight: 500;
+    }
+
+    .quality-time {
+      color: #999;
+      font-size: 0.9em;
+    }
+
+    .progress-bar {
+      height: 4px;
+      background: #333;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--netflix-red);
+      width: 0%;
+      transition: width 0.3s;
+    }
   </style>
 </head>
 <body>
@@ -82,63 +119,85 @@
   <main class="main-content">
     <div class="encoding-status">
       <h1>Кодирование видео</h1>
-      <div class="status-text">Подготовка...</div>
-      <div class="progress-bar">
-        <div class="progress-fill"></div>
-      </div>
-      <div class="time-info"></div>
-      <div class="error-message"></div>
+      <div id="qualities-progress"></div>
     </div>
   </main>
 
+  <template id="quality-template">
+    <div class="quality-item">
+      <div class="quality-header">
+        <span class="quality-name"></span>
+        <span class="quality-time"></span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill"></div>
+      </div>
+    </div>
+  </template>
+
   <script>
+    const socket = io();
     const encodingId = '<%= encodingId %>';
-    const statusText = document.querySelector('.status-text');
-    const progressFill = document.querySelector('.progress-fill');
-    const timeInfo = document.querySelector('.time-info');
-    const errorMessage = document.querySelector('.error-message');
+    const qualitiesProgress = document.getElementById('qualities-progress');
+    const qualityTemplate = document.getElementById('quality-template');
+
+    // Присоединяемся к комнате
+    socket.emit('join:encoding', encodingId);
+
+    // Обработка прогресса
+    socket.on('encoding:progress', (data) => {
+      let qualityEl = document.querySelector(`.quality-item[data-quality="${data.quality}"]`);
+      
+      if (!qualityEl) {
+        qualityEl = createQualityElement(data.quality);
+      }
+      
+      const progressFill = qualityEl.querySelector('.progress-fill');
+      const timeInfo = qualityEl.querySelector('.quality-time');
+      
+      progressFill.style.width = `${data.progress}%`;
+      timeInfo.textContent = formatTime(data.currentTime) + ' / ' + 
+                            formatTime(data.duration) + 
+                            ' (осталось: ' + formatTime(data.eta) + ')';
+    });
+
+    // Обработка завершения
+    socket.on('encoding:completed', () => {
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 2000);
+    });
+
+    // Обработка ошибок
+    socket.on('encoding:error', (error) => {
+      const errorEl = document.createElement('div');
+      errorEl.className = 'error-message';
+      errorEl.textContent = `Ошибка: ${error.message}`;
+      qualitiesProgress.appendChild(errorEl);
+    });
+
+    function createQualityElement(quality) {
+      const element = qualityTemplate.content.cloneNode(true);
+      const container = document.createElement('div');
+      container.className = 'quality-item';
+      container.dataset.quality = quality;
+      
+      const name = element.querySelector('.quality-name');
+      name.textContent = quality;
+      
+      container.appendChild(element);
+      qualitiesProgress.appendChild(container);
+      
+      return container;
+    }
 
     function formatTime(seconds) {
+      seconds = Math.floor(seconds);
       const h = Math.floor(seconds / 3600);
       const m = Math.floor((seconds % 3600) / 60);
-      const s = Math.floor(seconds % 60);
+      const s = seconds % 60;
       return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
     }
-
-    async function checkStatus() {
-      try {
-        const response = await fetch(`/api/encoding-status/${encodingId}`);
-        const data = await response.json();
-
-        progressFill.style.width = `${data.progress}%`;
-
-        switch(data.status) {
-          case 'pending':
-            statusText.textContent = 'Подготовка к кодированию...';
-            break;
-          case 'processing':
-            statusText.textContent = 'Кодирование видео...';
-            if (data.duration && data.currentTime) {
-              timeInfo.textContent = `${formatTime(data.currentTime)} / ${formatTime(data.duration)}`;
-            }
-            break;
-          case 'completed':
-            statusText.textContent = 'Кодирование завершено!';
-            setTimeout(() => window.location.href = '/', 2000);
-            return;
-          case 'error':
-            statusText.textContent = 'Ошибка при кодировании';
-            errorMessage.textContent = data.error || 'Неизвестная ошибка';
-            return;
-        }
-
-        setTimeout(checkStatus, 1000);
-      } catch (error) {
-        errorMessage.textContent = 'Ошибка при получении статуса';
-      }
-    }
-
-    checkStatus();
   </script>
 </body>
 </html> 

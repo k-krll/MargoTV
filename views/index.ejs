@@ -222,7 +222,7 @@
                 preload="auto"
                 width="640"
                 height="360"
-                poster="<%= video.thumbnail %>"
+                poster="<%= video.thumbnail ? '/' + video.thumbnail : '' %>"
                 data-setup='{
                   "fluid": true,
                   "playbackRates": [0.5, 1, 1.5, 2],
@@ -241,7 +241,7 @@
                   }
                 }'
               >
-                <source src="<%= video.path %>" type="video/mp4" />
+                <source src="/<%= video.path %>" type="video/mp4" />
                 <p class="vjs-no-js">
                   Для просмотра видео включите JavaScript и обновите браузер до версии с поддержкой HTML5
                 </p>

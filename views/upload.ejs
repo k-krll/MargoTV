@@ -191,6 +191,26 @@
     .cancel-upload:hover {
       background: rgba(229, 9, 20, 0.1);
     }
+
+    .quality-options {
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+    }
+
+    .quality-option {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 8px 12px;
+      background: #333;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .quality-option:hover {
+      background: #444;
+    }
   </style>
 </head>
 <body>
@@ -218,6 +238,26 @@
         <div class="form-group">
           <label for="video">Выберите видео</label>
           <input type="file" id="video" name="video" accept="video/*" required>
+        </div>
+        <div class="form-group">
+          <label>Качество видео</label>
+          <div class="quality-options">
+            <label class="quality-option">
+              <input type="checkbox" name="qualities[]" value="240p"> 240p
+            </label>
+            <label class="quality-option">
+              <input type="checkbox" name="qualities[]" value="360p"> 360p
+            </label>
+            <label class="quality-option">
+              <input type="checkbox" name="qualities[]" value="480p"> 480p
+            </label>
+            <label class="quality-option">
+              <input type="checkbox" name="qualities[]" value="720p" checked> 720p
+            </label>
+            <label class="quality-option">
+              <input type="checkbox" name="qualities[]" value="1080p"> 1080p
+            </label>
+          </div>
         </div>
         <div class="progress-container" id="progressContainer">
           <div class="progress-bar">

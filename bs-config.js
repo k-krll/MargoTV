@@ -1,5 +1,5 @@
 module.exports = {
-  proxy: "localhost:3005",
+  proxy: "localhost:3007",
   files: ["public/**/*.*", "views/**/*.*"],
   ignore: ["node_modules"],
   reloadDelay: 1000,
