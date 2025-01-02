@@ -254,7 +254,9 @@ async function processVideo(videoFile, thumbnailFile, video, encoding, io) {
     });
 
     console.log('🎉 Обработка видео успешно завершена');
-    io.to(encoding._id.toString()).emit('encoding:completed');
+    io.to(encoding._id.toString()).emit('encoding:completed', {
+      videoId: video._id.toString()
+    });
 
   } catch (error) {
     console.error('❌ Критическая ошибка при обработке видео:', error);
@@ -266,6 +268,7 @@ async function processVideo(videoFile, thumbnailFile, video, encoding, io) {
     });
 
     io.to(encoding._id.toString()).emit('encoding:error', { 
+      videoId: video._id.toString(),
       message: error.message,
       details: error.stack
     });
@@ -329,6 +332,7 @@ async function encodeVideoQuality(inputPath, outputPath, preset, duration, quali
 
           // Отправляем обновление через WebSocket
           io.to(encoding._id.toString()).emit('encoding:progress', {
+            videoId: encoding.videoId.toString(),
             quality,
             progress,
             currentTime,

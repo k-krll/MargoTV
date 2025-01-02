@@ -200,6 +200,70 @@
     .edit-button:hover {
       background-color: rgba(229, 9, 20, 0.1);
     }
+
+    .processing-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(20, 20, 20, 0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+
+    .processing-content {
+      text-align: center;
+      color: white;
+      padding: 20px;
+    }
+
+    .processing-spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid transparent;
+      border-top-color: var(--netflix-red);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 15px;
+    }
+
+    .processing-text {
+      font-size: 1.1rem;
+      margin-bottom: 15px;
+    }
+
+    .processing-progress {
+      width: 100%;
+      max-width: 300px;
+      margin: 0 auto;
+    }
+
+    .progress-bar {
+      height: 4px;
+      background: #333;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--netflix-red);
+      width: 0%;
+      transition: width 0.3s;
+    }
+
+    .progress-text {
+      font-size: 0.9rem;
+      color: #999;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body>
@@ -213,8 +277,25 @@
       <h1 class="section-title">Все видео</h1>
       <div class="videos">
         <% videos.forEach(function(video, index) { %>
-          <div class="video-item">
+          <div class="video-item" 
+               data-video-id="<%= video._id %>"
+               data-status="<%= video.status %>"
+               data-encoding-id="<%= video.encodingId %>">
             <div class="video-container">
+              <% if (video.status === 'processing') { %>
+                <div class="processing-overlay">
+                  <div class="processing-content">
+                    <div class="processing-spinner"></div>
+                    <div class="processing-text">Обработка видео...</div>
+                    <div class="processing-progress">
+                      <div class="progress-bar">
+                        <div class="progress-fill" id="progress-<%= video._id %>"></div>
+                      </div>
+                      <div class="progress-text" id="progress-text-<%= video._id %>">0%</div>
+                    </div>
+                  </div>
+                </div>
+              <% } %>
               <video
                 id="video-<%= index %>"
                 class="video-js vjs-theme-netflix"
@@ -270,34 +351,46 @@
   </main>
 
   <script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
   <script>
     document.addEventListener('DOMContentLoaded', function() {
-      const players = [];
+      const socket = io();
+      const processingVideos = document.querySelectorAll('.video-item');
       
-      document.querySelectorAll('.video-js').forEach((videoElement, index) => {
-        const player = videojs(`video-${index}`, {
-          controls: true,
-          autoplay: false,
-          preload: 'auto',
-          responsive: true,
-          fluid: true,
-          html5: {
-            vhs: {
-              overrideNative: true
-            }
-          }
-        });
+      processingVideos.forEach(videoItem => {
+        const video = videoItem.dataset;
+        if (video.status === 'processing') {
+          // Присоединяемся к комнате для каждого обрабатываемого видео
+          socket.emit('join:encoding', video.encodingId);
+        }
+      });
 
-        player.on('play', function() {
-          // Останавливаем все другие плееры при воспроизведении
-          players.forEach((p, i) => {
-            if (i !== index && !p.paused()) {
-              p.pause();
-            }
-          });
-        });
+      // Обработка прогресса
+      socket.on('encoding:progress', (data) => {
+        const progressBar = document.getElementById(`progress-${data.videoId}`);
+        const progressText = document.getElementById(`progress-text-${data.videoId}`);
+        
+        if (progressBar && progressText) {
+          progressBar.style.width = `${data.progress}%`;
+          progressText.textContent = `${Math.round(data.progress)}%`;
+        }
+      });
 
-        players.push(player);
+      // Обработка завершения
+      socket.on('encoding:completed', (data) => {
+        const videoItem = document.querySelector(`[data-video-id="${data.videoId}"]`);
+        if (videoItem) {
+          location.reload(); // Перезагружаем страницу для отображения готового видео
+        }
+      });
+
+      // Обработка ошибок
+      socket.on('encoding:error', (data) => {
+        const progressText = document.getElementById(`progress-text-${data.videoId}`);
+        if (progressText) {
+          progressText.textContent = `Ошибка: ${data.message}`;
+          progressText.style.color = 'var(--netflix-red)';
+        }
       });
     });
   </script>
